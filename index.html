@@ -34,10 +34,11 @@
     font-size: clamp(30px, 9.6vw, 42px); line-height: 1.7; color: var(--yellow);
     text-shadow: 0 0 10px rgba(45, 46, 44, 0.55), 0 0 4px rgba(45, 46, 44, 0.35);
   }
-  .track { display: inline-block; animation: drift var(--duration, 6s) linear infinite; }
+  .track { display: inline-block; will-change: transform; animation: drift var(--duration, 6s) linear infinite; }
+  .unit { display: inline-block; padding-right: 0.3em; }
   /* The asterisk sits high in the font, so lower it to the middle of the capitals. */
   .star { position: relative; top: 0.2em; }
-  @keyframes drift { to { transform: translateX(calc(-1 * var(--unit, 0px))); } }
+  @keyframes drift { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(calc(-1 * var(--unit, 0px)), 0, 0); } }
   @media (prefers-reduced-motion: reduce) {
     .soon { text-align: center; }
     .track { animation: none; }
@@ -54,15 +55,22 @@
 // one copy at 72 px a second, so the loop is seamless.
 (function tagline() {
   const track = document.getElementById("track");
-  const unit = 'COMING SOON <span class="star">*</span> ';
+  const unit = '<span class="unit">COMING SOON <span class="star">*</span></span>';
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) { track.textContent = "COMING SOON"; return; }
+  let builtFor = 0;
   function build() {
-    track.innerHTML = unit;
-    const width = track.getBoundingClientRect().width;
-    const copies = Math.ceil(innerWidth / Math.max(width, 1)) + 2;
+    // Phones fire resize when the address bar shows or hides; only rebuild
+    // when the width really changes, so the drift never restarts mid-scroll.
+    if (innerWidth === builtFor) return;
+    builtFor = innerWidth;
+    track.innerHTML = unit + unit;
+    const [a, b] = track.children;
+    // The exact distance from one copy to the next, so the loop lands on itself.
+    const step = b.getBoundingClientRect().left - a.getBoundingClientRect().left;
+    const copies = Math.ceil(innerWidth / Math.max(step, 1)) + 2;
     track.innerHTML = unit.repeat(copies);
-    track.style.setProperty("--unit", `${width}px`);
-    track.style.setProperty("--duration", `${width / 72}s`);
+    track.style.setProperty("--unit", `${step}px`);
+    track.style.setProperty("--duration", `${step / 72}s`);
   }
   document.fonts.ready.then(build);
   addEventListener("resize", build);
@@ -203,16 +211,16 @@
     const ctx = document.createElement("canvas").getContext("2d");
     ctx.font = font(100);
     if ("letterSpacing" in ctx) ctx.letterSpacing = "-3px";
-    const per100 = ctx.measureText("ALLEGEDLY.").width;
+    const per100 = ctx.measureText("ALLEGEDLY").width;
     const size = 100 * target / per100;
 
     ctx.font = font(size);
-    const m = ctx.measureText("ALLEGEDLY.");
+    const m = ctx.measureText("ALLEGEDLY");
     const ascent = m.fontBoundingBoxAscent ?? size * 1.2;
     const descent = m.fontBoundingBoxDescent ?? size * 0.3;
     const pitch = ascent + descent - size * 0.30;
     const padX = size * 0.32, padY = size * 0.96;
-    const width = Math.ceil(target + padX * 2 + size * 0.2);
+    const width = Math.ceil(target + padX * 2 + size * 0.8);
     const height = Math.ceil(ascent + descent + pitch + padY * 2);
 
     const c = ctx.canvas;
@@ -228,7 +236,14 @@
     ctx.shadowBlur = size * 0.25;
     const top = padY + ascent;
     ctx.fillText("THRIVING,", width / 2, top);
-    ctx.fillText("ALLEGEDLY.", width / 2, top + pitch);
+    ctx.fillText("ALLEGEDLY", width / 2, top + pitch);
+    // ™, small and level with the tops of the capitals, just past the Y.
+    const caps = m.actualBoundingBoxAscent ?? size * 0.75;
+    ctx.font = font(size * 0.22);
+    if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText("™", width / 2 + m.width / 2 + size * 0.06, top + pitch - caps * 0.97);
 
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
